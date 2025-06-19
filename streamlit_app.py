@@ -28,6 +28,33 @@ if "steps" not in st.session_state:
 if "generated_file_path" not in st.session_state:
     st.session_state.generated_file_path = None
 
+# --- Sidebar: File Upload + Options ---
+with st.sidebar:
+    st.header("📎 Upload & Settings")
+    uploaded_files = st.file_uploader("Upload PDFs, TXTs, CSVs, Excel files, or Images",
+        type=["pdf", "txt", "csv", "xlsx", "jpg", "jpeg", "png"], accept_multiple_files=True)
+
+    file_contents = []
+    if uploaded_files:
+        for file in uploaded_files:
+            try:
+                file_type, content = process_file(file)
+                file_contents.append((file.name, file_type, content))
+            except Exception as e:
+                st.error(f"❌ {file.name}: {e}")
+        if file_contents:
+            st.success(f"✅ {len(file_contents)} file(s) loaded.")
+
+    mode = st.radio("How should the files be processed?", ["Unified Mode", "Batch Mode"])
+    if mode == "Batch Mode":
+        batch_export_style = st.radio("Export style for batch:", [
+            "📁 One file per document (ZIP)", "📜 One file with multiple sheets/sections"])
+    else:
+        batch_export_style = None
+
+    pass_context = st.toggle("🔄 Pass output from one agent to the next?", value=True)
+    user_export_instruction = st.text_input("📄 Export instruction", placeholder="e.g. Generate Excel with summary")
+
 # --- Agent Creation UI ---
 with st.expander("➕ Create a New Agent"):
     with st.form("agent_creator"):
@@ -37,7 +64,7 @@ with st.expander("➕ Create a New Agent"):
         model = st.selectbox("Model", ["mistral", "llama3", "gemma"])
         category = st.text_input("Agent Category (e.g. researcher, summarizer, critic)")
         response_format = st.text_area("Optional: JSON Response Format", placeholder='e.g. { "summary": "...", "score": 0.0 }')
-        submitted = st.form_submit_button("💾 Save Agent")
+        submitted = st.form_submit_button("📂 Save Agent")
 
         if submitted and name and prompt:
             st.session_state.agent_configs.append({
@@ -69,34 +96,9 @@ for agent_name in selected_agent_names:
     else:
         st.warning(f"⚠️ Agent config not found for: {agent_name}")
 
-# --- File Upload ---
-st.subheader("📎 Upload Files")
-uploaded_files = st.file_uploader("Upload PDFs, TXTs, CSVs, Excel files, or Images",
-    type=["pdf", "txt", "csv", "xlsx", "jpg", "jpeg", "png"], accept_multiple_files=True)
+# --- Main Prompt & Run ---
+user_prompt = st.text_area("🗬️ Task prompt")
 
-file_contents = []
-if uploaded_files:
-    for file in uploaded_files:
-        try:
-            file_type, content = process_file(file)
-            file_contents.append((file.name, file_type, content))
-        except Exception as e:
-            st.error(f"❌ {file.name}: {e}")
-    if file_contents:
-        st.success(f"✅ {len(file_contents)} file(s) loaded.")
-
-# --- Options ---
-mode = st.radio("How should the files be processed?", ["Unified Mode", "Batch Mode"])
-if mode == "Batch Mode":
-    batch_export_style = st.radio("Export style for batch:", [
-        "📁 One file per document (ZIP)", "📑 One file with multiple sheets/sections"])
-else:
-    batch_export_style = None
-pass_context = st.toggle("🔄 Pass output from one agent to the next?", value=True)
-user_prompt = st.text_area("💬 Task prompt")
-user_export_instruction = st.text_input("📤 Export instruction", placeholder="e.g. Generate Excel with summary")
-
-# --- Run ---
 if st.button("🚀 Run Agent Chain", use_container_width=True):
     exporter = ExportAgent()
     if mode == "Unified Mode":
@@ -126,7 +128,7 @@ if st.button("🚀 Run Agent Chain", use_container_width=True):
                     zipf.write(out_path, arcname=os.path.basename(out_path))
             st.session_state.generated_file_path = zip_path
 
-        elif batch_export_style.startswith("📑"):
+        elif batch_export_style.startswith("📜"):
             wb = Workbook()
             wb.remove(wb.active)
             for name, output in batch_outputs:
@@ -135,7 +137,6 @@ if st.button("🚀 Run Agent Chain", use_container_width=True):
                     parsed = json.loads(inst)
                     content = parsed.get("content", {})
 
-                    # If agent returned raw table (list of lists), wrap it
                     if isinstance(content, list) and all(isinstance(row, list) for row in content):
                         df = pd.DataFrame(content[1:], columns=content[0])
                     else:
@@ -152,7 +153,6 @@ if st.button("🚀 Run Agent Chain", use_container_width=True):
             wb.save(multi_path)
             st.session_state.generated_file_path = multi_path
 
-    # --- Retry if needed ---
     fallback_path = "outputs/fallback.txt"
     gen = st.session_state.generated_file_path
     if not gen or not os.path.exists(gen) or gen.endswith("fallback.txt"):
@@ -165,16 +165,16 @@ if st.button("🚀 Run Agent Chain", use_container_width=True):
             export_instruction = exporter.run(st.session_state.final_output, new_prompt)
             st.session_state.generated_file_path = generate_output_file(export_instruction)
 
-# --- Display ---
+# --- Display Results ---
 if st.session_state.final_output:
     st.success("✅ Chain Complete")
-    st.subheader("🪜 Steps")
+    st.subheader("🩜 Steps")
     for step in st.session_state.steps:
         with st.expander(f"🧠 {step['agent']}"):
-            st.markdown(f"**Input:**\n```\n{step['input']}\n```")
-            st.markdown(f"**Output:**\n```\n{step['output']}\n```")
+            st.markdown(f"**Input:**\n```{step['input']}\n```")
+            st.markdown(f"**Output:**\n```{step['output']}\n```")
 
-    st.subheader("🧾 Final Output")
+    st.subheader("🗾️ Final Output")
     st.code(st.session_state.final_output)
 
     if st.session_state.generated_file_path:
