@@ -1,0 +1,46 @@
+import os
+import tempfile
+import pandas as pd
+from pathlib import Path
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from PIL import Image
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+SUPPORTED_EXTENSIONS = ["pdf", "txt", "csv", "xlsx", "jpg", "jpeg", "png"]
+
+def get_file_extension(file):
+    return Path(file.name).suffix.lower().replace(".", "")
+
+def process_file(file):
+    ext = get_file_extension(file)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp_file:
+        tmp_file.write(file.read())
+        tmp_path = tmp_file.name
+
+    if ext == "pdf":
+        loader = PyPDFLoader(tmp_path)
+        pages = loader.load_and_split()
+        content = "\n".join([p.page_content for p in pages])
+        return "text", content
+
+    elif ext == "txt":
+        loader = TextLoader(tmp_path)
+        docs = loader.load()
+        return "text", docs[0].page_content
+
+    elif ext == "csv":
+        df = pd.read_csv(tmp_path)
+        return "table", df.to_markdown(index=False)
+
+    elif ext == "xlsx":
+        df = pd.read_excel(tmp_path)
+        return "table", df.to_markdown(index=False)
+
+    elif ext in ["jpg", "jpeg", "png"]:
+        image = Image.open(tmp_path)
+        text = pytesseract.image_to_string(image)
+        return "image", text.strip()
+
+    else:
+        return "unknown", f"Unsupported file type: {ext}"

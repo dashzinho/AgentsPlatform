@@ -1,0 +1,7 @@
+{
+  "name": "Extractor",
+  "prompt": "You extract information from documents such as pdfs.",
+  "temperature": 0.0,
+  "model": "mistral",
+  "response_format": null
+}
