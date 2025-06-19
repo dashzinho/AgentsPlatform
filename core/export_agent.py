@@ -25,6 +25,8 @@ Respond in this JSON format:
   "filename": "myfile.ext",
   "content": { ... }
 }
+
+Output must be valid JSON. Do not include comments, trailing commas, or functions like .join()
 """,
             model=model,
             temperature=temperature
